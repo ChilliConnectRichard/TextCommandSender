@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+
+    <style type="text/css">
+        .message-pane {
+            display: block;
+            width: 100%;
+            height: 400px;
+            margin: 1em 0;
+        }
+        .message-input {
+            display: inline-block;
+            width: calc(100% - 10em);
+        }
+        .message-submit {
+            display: inline-block;
+            width: 8em;
+            margin-left: 1em;
+        }
+    </style>
+
+    <title>ChilliConnect Text Command Sender</title>
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <h1 style="margin: 1em 0;">Text Command Sender - ChilliConnect</h1>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-2">
+                <p><button class="set-game-token">Set Game Token</button></p>
+                <p><button class="session-start">Start Session</button></p>
+            </div>
+            <div class="col-10">
+                <p>GameToken: <span class="gameToken" style="font-family: monospace">-</span></p>
+                <p>DeviceID: <span class="deviceId" style="font-family: monospace">-</span></p>
+                <p>ChilliConnectID: <span class="chilliConnectId" style="font-family: monospace">-</span></p>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <form class="message" action="">
+                    <textarea class="message-pane" readonly></textarea>
+                    <input class="message-input" type="text">
+                    <button class="message-submit" type="submit">Send</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        document.addEventListener("DOMContentLoaded", function() {
+            init();
+        });
+
+        function init() {
+            document.querySelector(Messager.sel_setGameToken).addEventListener("click", Messager.setGameToken);
+            document.querySelector(Messager.sel_startSession).addEventListener("click", Messager.startSession);
+            document.querySelector(Messager.sel_form).addEventListener("submit", Messager.submitCommand);
+        }
+
+        var ChilliConnect = {
+            endpoint: "https://connect.chilliconnect.com",
+            gameToken: "",
+            connectToken: "",
+            chilliConnectId: "",
+            deviceId: "",
+
+            initGameToken: function() {
+                ChilliConnect.gameToken = prompt("Enter your GameToken:");
+                Messager.refreshSession();
+                Messager.writeToPane("GameToken set: " + ChilliConnect.gameToken);
+            },
+            initDeviceSession: function() {
+                var deviceId = prompt("Enter your DeviceID:");
+                ChilliConnect.login(deviceId);
+                Messager.writeToPane("Session started");
+            },
+            login: function(deviceId) {
+                ChilliConnect.deviceId = deviceId;
+                ChilliConnect.makeGameRequest(
+                    "/1.0/player/login/device",
+                    {
+                        "DeviceID": deviceId,
+                        "Platform": "ANDROID",
+                        "CreatePlayer": true
+                    },
+                    function(response) {
+                        ChilliConnect.chilliConnectId = response.ChilliConnectID;
+                        ChilliConnect.connectToken = response.ConnectAccessToken;
+                        Messager.refreshSession();
+                    }
+                );
+            },
+            makeGameRequest: function(endpoint, requestObj, callback) {
+                if(ChilliConnect.gameToken.length === 0) {
+                    Messager.writeToPane("Error: Game token not set");
+                    return;
+                }
+
+                var headers = new Headers();
+                headers.append("Content-Type", "text/json");
+                headers.append("Game-Token", ChilliConnect.gameToken);
+                var request = new Request(
+                    ChilliConnect.endpoint + endpoint,
+                    {
+                        method: "POST",
+                        headers: headers,
+                        body: JSON.stringify(requestObj)
+                    }
+                );
+
+                fetch(request).then(response => response.json()).then(callback);
+            },
+            makeSessionRequest: function(endpoint, requestObj, callback) {
+                if(ChilliConnect.connectToken.length === 0) {
+                    Messager.writeToPane("Error: Start a session first");
+                    return;
+                }
+
+                var headers = new Headers();
+                headers.append("Content-Type", "text/json");
+                headers.append("Connect-Access-Token", ChilliConnect.connectToken);
+                var request = new Request(
+                    ChilliConnect.endpoint + endpoint,
+                    {
+                        method: "POST",
+                        headers: headers,
+                        body: JSON.stringify(requestObj)
+                    }
+                );
+
+                fetch(request).then(response => response.json()).then(callback);
+            }
+        };
+
+        var Messager = {
+            sel_setGameToken: ".set-game-token",
+            sel_gameToken: ".gameToken",
+            sel_startSession: ".session-start",
+            sel_deviceId: ".deviceId",
+            sel_chilliConnectId: ".chilliConnectId",
+            sel_form: ".message",
+            sel_input: ".message-input",
+            sel_pane: ".message-pane",
+
+            setGameToken: function() {
+                ChilliConnect.initGameToken();
+            },
+            startSession: function() {
+                ChilliConnect.initDeviceSession();
+            },
+            refreshSession: function() {
+                document.querySelector(Messager.sel_gameToken).innerText = ChilliConnect.gameToken;
+                document.querySelector(Messager.sel_deviceId).innerText = ChilliConnect.deviceId;
+                document.querySelector(Messager.sel_chilliConnectId).innerText = ChilliConnect.chilliConnectId;
+            },
+            submitCommand: function(e) {
+                console.log("Submitting Command: " + Messager.getCommand());
+                Messager.writeToPane("Sent: " + Messager.getCommand());
+
+                ChilliConnect.makeSessionRequest(
+                    "/1.0/script/run",
+                    {
+                        Key: "PING",
+                        Params: {
+                            command: Messager.getCommand()
+                        }
+                    },
+                    function(response) {
+                        console.log("Server response");
+                        console.log(response);
+                        Messager.writeToPane("Response: " + response.Output.Message);
+                    }
+                );
+
+                e.preventDefault();
+                return false;
+            },
+            getCommand: function() {
+                return document.querySelector(this.sel_input).value
+            },
+            writeToPane: function(line) {
+                var el = document.querySelector(Messager.sel_pane);
+
+                el.value = (new Date()).toLocaleTimeString() + ": " + line + "\n" + el.value;
+            }
+        };
+
+    </script>
+
+</body>
+</html>
