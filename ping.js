@@ -1,0 +1,1 @@
+return { "Message" : ChilliConnect.Request.command + " Pong" };
